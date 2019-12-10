@@ -35,9 +35,10 @@ volatile bool btnPressed = false;
 void cplx_led_on(uint8_t var);
 void cplx_off();
 void clear_all();
-void ani_single_led(uint8_t off_state, uint8_t flash_threshold = 0xFF);
+void ani_single_led(uint8_t off_state, uint8_t order, uint8_t flash_threshold = 0xFF);
 void ani_pulse(uint8_t off_state);
 void tick();
+uint8_t next(uint8_t mode = 0);
 
 // See https://blog.podkalicki.com/attiny13-pseudo-random-numbers/
 uint16_t random_number = 0x123;
@@ -96,16 +97,20 @@ void tick() {
     switch (mode) {
       case 0:
       case 1:
-        ani_single_led(mode);
-        break;     
       case 2:
       case 3:
-        ani_single_led(mode-2, 4);
-        break;
+        ani_single_led(mode & 0x01, mode >> 1);
+        break;     
       case 4:
       case 5:
-        ani_pulse(mode-4);
+      case 6:
+      case 7:
+        ani_single_led((mode-4) & 0x01, (mode >> 1) & 1, 4);
         break;
+      case 8:
+      case 9:
+        ani_pulse(mode-8);
+        break;     
       default:
         mode = 0;
         break;
@@ -113,7 +118,7 @@ void tick() {
   }
 }
 
-void ani_single_led(uint8_t off_state, uint8_t flash_threshold = 0xFF) {
+void ani_single_led(uint8_t off_state, uint8_t order, uint8_t flash_threshold = 0xFF) {
   static uint8_t ledIdx = 0;
   if(globalCounter == flash_threshold) {
     LED[ledIdx] = off_state;
@@ -121,7 +126,7 @@ void ani_single_led(uint8_t off_state, uint8_t flash_threshold = 0xFF) {
   if(globalCounter > 8*(timescale+1)) {
     globalCounter = 1;
     LED[ledIdx] = off_state;
-    ledIdx += 1;
+    ledIdx = next(order);
     if(ledIdx == LEDS) ledIdx = 0;
     LED[ledIdx] = 7;
   }
@@ -150,6 +155,13 @@ void clear_all() {
   for(uint8_t i = 0; i < LEDS; i++) LED[i] = 0;
 }
 
+uint8_t next(uint8_t mode = 0) {
+  static uint8_t idx = 0;
+  idx += 1;
+  if(mode == 1) idx += random() & 0x07;
+  if(idx >= LEDS) idx -= LEDS;
+  return idx;
+}
 
 void cplx_off() {
   PORTB &= ~CPLX_MASK; // GND all (clears charge on pin)

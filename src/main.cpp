@@ -1,6 +1,5 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
-#include <random.h>
 
 #define LEDS 12 // LED count
 #define CPLX_MASK 0b00011101 // LED IO mask on PORTB
@@ -30,8 +29,7 @@ volatile bool btnPressed = false;
 void cplx_led_on(uint8_t var);
 void cplx_off();
 void clear_all();
-void ani_single_order(uint8_t submode);
-void ani_single_flash_order(uint8_t submode);
+void ani_single_led(uint8_t off_state, uint8_t flash_threshold = 0xFF);
 void ani_pulse(uint8_t submode);
 void tick();
 
@@ -92,11 +90,11 @@ void tick() {
     switch (mode) {
       case 0:
       case 1:
-        ani_single_order(mode);
+        ani_single_led(mode);
         break;     
       case 2:
       case 3:
-        ani_single_flash_order(mode-2);
+        ani_single_led(mode-2, 4);
         break;
       case 4:
         ani_pulse(mode-4);
@@ -108,25 +106,14 @@ void tick() {
   }
 }
 
-
-void ani_single_order(uint8_t submode) {
+void ani_single_led(uint8_t off_state, uint8_t flash_threshold = 0xFF) {
   static uint8_t ledIdx = 0;
-  if(globalCounter > 10 + 10*timescale) {
-    globalCounter = 0;
-    LED[ledIdx] = submode;
-    ledIdx += 1;
-    if(ledIdx == LEDS) ledIdx = 0;
-    LED[ledIdx] = 7;
+  if(globalCounter == flash_threshold) {
+    LED[ledIdx] = off_state;
   }
-}
-
-void ani_single_flash_order(uint8_t submode) {
-  static uint8_t ledIdx = 0;
-  if(globalCounter == 4) {
-    LED[ledIdx] = submode;
-  }
-  if(globalCounter > 5 + 5*timescale) {
-    globalCounter = 0;
+  if(globalCounter > 8*(timescale+1)) {
+    globalCounter = 1;
+    LED[ledIdx] = off_state;
     ledIdx += 1;
     if(ledIdx == LEDS) ledIdx = 0;
     LED[ledIdx] = 7;

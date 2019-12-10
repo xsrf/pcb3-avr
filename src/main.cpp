@@ -5,12 +5,7 @@
 #define LEDS 12 // LED count
 #define CPLX_MASK 0b00011101 // LED IO mask on PORTB
 
-uint8_t LED[LEDS]; // array containing each LEDs brightness (0-7)
-unsigned long globalCounter = 0;
-volatile bool isrTick = true;
 const uint8_t isrPWRvals[3] = { _BV(1), _BV(3), _BV(4) }; // PWM Power/Duration values (LSB to MSB)
-volatile bool btnPressed = false;
-
 const uint8_t CPLX_PBH[LEDS] = {
   0b00000001,
   0b00000100,
@@ -24,9 +19,13 @@ const uint8_t CPLX_PBH[LEDS] = {
   0b00010000,
   0b00000001,
   0b00010000,
-};
+}; // Charlieplexing IOs in pairs
 
-uint8_t mode,c_led = 0;
+uint8_t LED[LEDS]; // array containing each LEDs brightness (0-7)
+uint16_t globalCounter = 0;
+uint8_t mode,timescale,c_led = 0;
+volatile bool isrTick = true;
+volatile bool btnPressed = false;
 
 void cplx_led_on(uint8_t var);
 void cplx_off();
@@ -77,10 +76,15 @@ void tick() {
     } else {
       LED[1] = 1;
     }
+    // long press adjusts timescale
+    if((btnPressCnt & 0x1F) == 0) timescale++;
   } else {
     if(btnPressCnt > 0) {
-      btnPressCnt = 0;
-      mode++;
+      if(btnPressCnt < 0x1F) {
+        mode++;
+        timescale = 0;
+      }
+      btnPressCnt = 0;      
       LED[1] = 0;
       globalCounter = 0;
     }
@@ -88,18 +92,14 @@ void tick() {
     switch (mode) {
       case 0:
       case 1:
-      case 2:
-      case 3:
         ani_single_order(mode);
         break;     
-      case 4:   
-      case 5:
-      case 6:
-      case 7:
-        ani_single_flash_order(mode-4);
+      case 2:
+      case 3:
+        ani_single_flash_order(mode-2);
         break;
-      case 8:
-        ani_pulse(mode-8);
+      case 4:
+        ani_pulse(mode-4);
         break;
       default:
         mode = 0;
@@ -111,9 +111,9 @@ void tick() {
 
 void ani_single_order(uint8_t submode) {
   static uint8_t ledIdx = 0;
-  if(globalCounter > 10 + 10*submode) {
+  if(globalCounter > 10 + 10*timescale) {
     globalCounter = 0;
-    LED[ledIdx] = 0;
+    LED[ledIdx] = submode;
     ledIdx += 1;
     if(ledIdx == LEDS) ledIdx = 0;
     LED[ledIdx] = 7;
@@ -123,9 +123,9 @@ void ani_single_order(uint8_t submode) {
 void ani_single_flash_order(uint8_t submode) {
   static uint8_t ledIdx = 0;
   if(globalCounter == 4) {
-    LED[ledIdx] = 0;
+    LED[ledIdx] = submode;
   }
-  if(globalCounter > 5 + 5*submode) {
+  if(globalCounter > 5 + 5*timescale) {
     globalCounter = 0;
     ledIdx += 1;
     if(ledIdx == LEDS) ledIdx = 0;
@@ -138,6 +138,7 @@ void ani_pulse(uint8_t submode) {
   if(globalCounter==0) {
     for(uint8_t i=0; i<LEDS; i++) LED[i] = (random() & 0x07) | 0x10;
   }
+  if(globalCounter < timescale+1) return;
   for(uint8_t i=0; i<LEDS; i++) {
     val = LED[i];
     if(val <= 0x10 && ((random() & 0x1F) == 0)) val++;
@@ -147,6 +148,7 @@ void ani_pulse(uint8_t submode) {
     if(val == 0x20) val = 0x10;
     LED[i] = val;
   }
+  globalCounter = 1;
 }
 
 

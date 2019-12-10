@@ -4,6 +4,12 @@
 #define LEDS 12 // LED count
 #define CPLX_MASK 0b00011101 // LED IO mask on PORTB
 
+#define MPLX 0b10000000 // Don't skip LED in Multiplexing if off
+#define MINC 0b01000000 // Increase LED brightness (for animations)
+#define MDEC 0b00100000 // Decrease LED brightness (for animations)
+#define MPOW 0b00000111 // Mask for LED power values
+#define POWMAX 0b00000111 // Max LED power
+
 const uint8_t isrPWRvals[3] = { _BV(1), _BV(3), _BV(4) }; // PWM Power/Duration values (LSB to MSB)
 const uint8_t CPLX_PBH[LEDS] = {
   0b00000001,
@@ -30,7 +36,7 @@ void cplx_led_on(uint8_t var);
 void cplx_off();
 void clear_all();
 void ani_single_led(uint8_t off_state, uint8_t flash_threshold = 0xFF);
-void ani_pulse(uint8_t submode);
+void ani_pulse(uint8_t off_state);
 void tick();
 
 // See https://blog.podkalicki.com/attiny13-pseudo-random-numbers/
@@ -97,6 +103,7 @@ void tick() {
         ani_single_led(mode-2, 4);
         break;
       case 4:
+      case 5:
         ani_pulse(mode-4);
         break;
       default:
@@ -120,19 +127,18 @@ void ani_single_led(uint8_t off_state, uint8_t flash_threshold = 0xFF) {
   }
 }
 
-void ani_pulse(uint8_t submode) {
+void ani_pulse(uint8_t off_state) {
   uint8_t val;
   if(globalCounter==0) {
-    for(uint8_t i=0; i<LEDS; i++) LED[i] = (random() & 0x07) | 0x10;
+    for(uint8_t i=0; i<LEDS; i++) LED[i] = (random() & MPOW) | MPLX | MDEC; // init all LEDs
   }
   if(globalCounter < timescale+1) return;
   for(uint8_t i=0; i<LEDS; i++) {
     val = LED[i];
-    if(val <= 0x10 && ((random() & 0x1F) == 0)) val++;
-    if(val <= 0x18 && val>0x10) val++;
-    if(val > 0x18) val--;
-    if(val == 0x18) val = 0x27;
-    if(val == 0x20) val = 0x10;
+    if((val & MINC) && (val & MPOW) < POWMAX) val++; // fade in
+    if((val & MDEC) && (val & MPOW) > off_state) val--; // fade out
+    if((val & MPOW) == POWMAX) val = ( val & MPOW ) | MDEC | MPLX; // LED is on, set it to fade out
+    if((val & MPOW) <= off_state && (random() & 0x1F) == 0 ) val = ( val & MPOW ) | MINC | MPLX; // LED is off, set it to fade in (in case of some randomness)
     LED[i] = val;
   }
   globalCounter = 1;
@@ -178,5 +184,5 @@ ISR(TIM0_COMPA_vect) {
     isrLEDidx += 1;
     if(isrLEDidx == LEDS) isrLEDidx = 0;
     if(isrLEDidx == 0) isrPWRidx = ( isrPWRidx + 1 ) & 3;
-  } while ( LED[isrLEDidx] == 0 && skipCnt++ < LEDS );
+  } while ( (LED[isrLEDidx] & (MPLX | MPOW)) == 0 && skipCnt++ < LEDS );
 }
